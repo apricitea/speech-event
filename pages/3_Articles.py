@@ -3,7 +3,7 @@ import pandas as pd
 import os
 from sqlalchemy import create_engine
 
-with open('C:/code/bririns/speech-event/credentials.env') as file:
+with open('C:/code/github/speech-event/credentials.env') as file:
     for line in file:
         if line.startswith('#') or not line.strip():
             continue
@@ -30,13 +30,13 @@ def get_articles_from_db(keyword=None, start_date=None, end_date=None):
     # Construct the SQL query with placeholders
     query = """
     SELECT 
-        title
-        , date_published
-        , date_accessed
-        , link
-        , content 
+        t.article_title
+        , t.article_date_published
+        , t.article_date_accessed
+        , t.article_link
+        , t.article_content 
     FROM 
-        public.articles 
+        public.textual_data AS t
     WHERE 
         1=1
     """
@@ -44,13 +44,13 @@ def get_articles_from_db(keyword=None, start_date=None, end_date=None):
     params = {}
     
     if keyword:
-        query += " AND title ILIKE %(keyword)s"
+        query += " AND t.article_title ILIKE %(keyword)s"
         params['keyword'] = f"%{keyword}%"
     if start_date:
-        query += " AND date_published >= %(start_date)s"
+        query += " AND t.article_date_published >= %(start_date)s"
         params['start_date'] = start_date
     if end_date:
-        query += " AND date_published <= %(end_date)s"
+        query += " AND t.article_date_published <= %(end_date)s"
         params['end_date'] = end_date
     
     # Execute the query and retrieve the data into a DataFrame
