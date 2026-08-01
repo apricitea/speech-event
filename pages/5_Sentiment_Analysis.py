@@ -1,9 +1,9 @@
 import streamlit as st
 
-st.markdown("# Analyzing the Impact of BRI's CEO on the Bank's Stock Price Performance")
+st.markdown("# News Sentiment")
 st.write("""
-         Dashboard ini bertujuan untuk membuat prediksi berdasarkan Model Regresi Logistik yang telah dibuat dari hasil analisis Data Primer terkait:\n
-         
-         """)
-
-st.markdown("## Made by: BRI Research Institute")
+Sentiment, topic, and summary for each scraped article, scored by a local
+LLM (Ollama, llama3) on a 7-point scale from Very Negative to Very Positive,
+with a Not Relevant class for articles that surfaced from the keyword search
+but aren't actually about the CEO.
+""")

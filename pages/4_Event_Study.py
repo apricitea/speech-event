@@ -1,9 +1,9 @@
 import streamlit as st
 
-st.markdown("# Analyzing the Impact of BRI's CEO on the Bank's Stock Price Performance")
+st.markdown("# Event Study: Abnormal Returns vs. News Days")
 st.write("""
-         Dashboard ini bertujuan untuk membuat prediksi berdasarkan Model Regresi Logistik yang telah dibuat dari hasil analisis Data Primer terkait:\n
-         
-         """)
-
-st.markdown("## Made by: BRI Research Institute")
+Flags trading days where BBRI's return deviates from what a market-model
+regression (BBRI return ~ IHSG return) would predict by more than 2 standard
+deviations, then checks which of those abnormal-return days coincide with a
+CEO-speech-related news article.
+""")

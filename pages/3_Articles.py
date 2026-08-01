@@ -1,21 +1,17 @@
 import streamlit as st
 import pandas as pd
 import os
+from dotenv import load_dotenv
 from sqlalchemy import create_engine
 
-with open('C:/code/github/speech-event/credentials.env') as file:
-    for line in file:
-        if line.startswith('#') or not line.strip():
-            continue
-        key, value = line.strip().split('=', 1)
-        os.environ[key] = value
+load_dotenv()
 
 # Define your PostgreSQL connection details
-db_user = os.getenv('user')
-db_pass = os.getenv('pass')
-db_host = os.getenv('host')
-db_port = os.getenv('port')
-db_name = os.getenv('name')
+db_user = os.getenv('DB_USER')
+db_pass = os.getenv('DB_PASS')
+db_host = os.getenv('DB_HOST')
+db_port = os.getenv('DB_PORT')
+db_name = os.getenv('DB_NAME')
 
 # Create the connection string
 connection_string = f"postgresql+psycopg2://{db_user}:{db_pass}@{db_host}:{db_port}/{db_name}"
