@@ -46,3 +46,15 @@ streamlit run Home.py
 
 Requires a running Postgres instance (schema: `public.textual_data`) and a
 local Ollama daemon with `llama3` pulled for the sentiment notebook.
+
+---
+
+## Data provenance
+
+`notebooks/**/*.csv` contains article text scraped from Indonesian news publishers
+(including kompas.com, republika.co.id, bisnis.com and infobanknews.com) together with
+daily price history for BBRI and the IHSG sourced from Yahoo Finance.
+
+The article text belongs to its respective publishers and the price data to its provider.
+Neither is **our work**, no licence is asserted over either, and both are committed only so
+that the event study can be reproduced without re-crawling. The analysis code is ours (MIT).
