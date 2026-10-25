@@ -1,0 +1,16 @@
+cff-version: 1.2.0
+message: "If you use this work, cite it as below."
+type: software
+title: "Do BRI CEO-speech news days move the stock? A rebuilt event study"
+authors:
+  - family-names: Nataputra
+    given-names: Alvin Christian
+    email: alvincnataputra@gmail.com
+    website: https://apricitea.github.io
+repository-code: "https://github.com/apricitea/speech-event"
+url: "https://apricitea.github.io"
+license: MIT
+version: "1.0.0"
+date-released: "2026-10-25"
+abstract: >-
+  The original pipeline selected days by abnormal return and then looked for news, on a merged table containing 32 news rows and zero abnormal labels. Rebuilt with news as the event: 26 events, Patell Z -2.84 (p=0.0045), BMP t -3.24 (p=0.0034), 1/26 surviving Benjamini-Hochberg.
