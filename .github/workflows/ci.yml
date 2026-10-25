@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  event-study:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install
+        run: python -m pip install --quiet pandas numpy scipy matplotlib pytest
+
+      - name: Tests
+        run: python -m pytest tests -q
+
+      - name: Run the study and check the aggregate is finite
+        run: |
+          python event_study.py
+          python - <<'PY'
+          import glob, json
+          latest = sorted(glob.glob("out/*/results.json"))[-1]
+          r = json.load(open(latest))
+          assert r["events"] > 0, r["events"]
+          assert 0.0 <= r["patell"]["p"] <= 1.0
+          assert r["event_window"] == "[-1, +1] trading days"
+          print(latest, "events", r["events"], "mean CAR", round(r["mean_car"], 4))
+          PY
