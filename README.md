@@ -27,7 +27,14 @@ and with tests that have known sampling distributions:
 One of 26 events survives Benjamini–Hochberg at a 5% FDR. That is the honest shape of a
 small-sample result: a consistent negative drift, no single dramatic day.
 
-![Event-window CARs](out/20261025T144138Z/fig_car.png)
+A placebo check guards the obvious objection — that any 26 dates would look like this.
+1,000 samples of 26 random trading dates, put through the identical market-model and CAR code,
+give a null mean CAR of −0.02% (sd 0.52%). The observed −1.23% falls outside that 95% band:
+1.0% of placebo draws sit at or below it, empirical two-sided p = 0.023. Real, but less
+decisive than Patell's 0.0045 suggests — the expected direction when a parametric test is
+optimistic about its own assumptions.
+
+![News dates vs placebo dates](figures/fig_car.png)
 
 The timing decomposition is in the generated report: the mean abnormal return is −0.39% at
 t−1, −0.50% on publication, −0.34% at t+1. The pre-publication component means some articles

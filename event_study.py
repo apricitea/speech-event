@@ -27,6 +27,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -90,7 +91,43 @@ def fit_market_model(stock: np.ndarray, market: np.ndarray) -> tuple[float, floa
     return alpha, beta, sigma2, float(market.mean()), float(((market - market.mean()) ** 2).sum())
 
 
-def run(n_boot: int = 0) -> dict:
+def estimate_car(returns: np.ndarray, market: np.ndarray, t0: int) -> dict | None:
+    """Market-model CAR for one candidate event index, or None if the windows do not fit.
+
+    Shared by the observed events and the placebo draws, so both go through identical code.
+    """
+    est_start, est_end = t0 - 130, t0 - 11
+    win_start, win_end = t0 - 1, t0 + 1
+    if est_start < 0 or win_end >= len(returns):
+        return None
+    alpha, beta, sigma2, mean_m, ss_m = fit_market_model(
+        returns[est_start:est_end + 1], market[est_start:est_end + 1]
+    )
+    ars, vars_ = [], []
+    for t in range(win_start, win_end + 1):
+        expected = alpha + beta * market[t]
+        ars.append(returns[t] - expected)
+        vars_.append(sigma2 * (1 + 1 / (est_end - est_start + 1) + (market[t] - mean_m) ** 2 / ss_m))
+    car = float(np.sum(ars))
+    forecast_var = float(np.sum(vars_))
+    scar = car / np.sqrt(forecast_var)
+    t_est = est_end - est_start + 1
+    adj = np.sqrt((t_est - 2) / (t_est - 4)) if t_est > 4 else 1.0
+    return {
+        "car": car,
+        "scar": float(scar),
+        "patell_z": float(scar * adj),
+        "forecast_var": forecast_var,
+        "ar_m1": float(ars[0]),
+        "ar_0": float(ars[1]),
+        "ar_p1": float(ars[2]),
+        "alpha": alpha,
+        "beta": beta,
+        "sigma2": sigma2,
+    }
+
+
+def run(placebo_draws: int = 1000, seed: int = 42) -> dict:
     frame = load_returns()
     dates = frame["date"].reset_index(drop=True)
     returns = frame["r_stock"].to_numpy()
@@ -103,40 +140,10 @@ def run(n_boot: int = 0) -> dict:
     for event in events:
         if event not in position:
             continue
-        t0 = position[event]
-        est_start, est_end = t0 - 130, t0 - 11
-        win_start, win_end = t0 - 1, t0 + 1
-        if est_start < 0 or win_end >= len(dates):
+        estimate = estimate_car(returns, market, position[event])
+        if estimate is None:
             continue
-        alpha, beta, sigma2, mean_m, ss_m = fit_market_model(
-            returns[est_start:est_end + 1], market[est_start:est_end + 1]
-        )
-        ars, vars_ = [], []
-        for t in range(win_start, win_end + 1):
-            expected = alpha + beta * market[t]
-            ars.append(returns[t] - expected)
-            vars_.append(sigma2 * (1 + 1 / (est_end - est_start + 1) + (market[t] - mean_m) ** 2 / ss_m))
-        car = float(np.sum(ars))
-        forecast_var = float(np.sum(vars_))
-        scar = car / np.sqrt(forecast_var)
-        # Patell adjusts SCAR to unit variance for the estimation-window length.
-        t_est = est_end - est_start + 1
-        adj = np.sqrt((t_est - 2) / (t_est - 4)) if t_est > 4 else 1.0
-        rows.append(
-            {
-                "date": str(pd.Timestamp(event).date()),
-                "car": car,
-                "scar": float(scar),
-                "patell_z": float(scar * adj),
-                "forecast_var": forecast_var,
-                "ar_m1": float(ars[0]),
-                "ar_0": float(ars[1]),
-                "ar_p1": float(ars[2]),
-                "alpha": alpha,
-                "beta": beta,
-                "sigma2": sigma2,
-            }
-        )
+        rows.append({"date": str(pd.Timestamp(event).date()), **estimate})
 
     study = pd.DataFrame(rows)
     n = len(study)
@@ -162,6 +169,34 @@ def run(n_boot: int = 0) -> dict:
     study["p_bh"] = np.empty(n)
     study.loc[study.index[order], "p_bh"] = np.clip(bh, 0, 1)
 
+    # Placebo dates: same machinery, dates drawn at random from the eligible range. If news
+    # dates were nothing special, the observed mean CAR should sit inside this distribution.
+    observed_mean = float(study["car"].mean())
+    eligible = np.arange(131, len(dates) - 2)
+    rng = np.random.default_rng(seed)
+    null = np.empty(placebo_draws, dtype=float)
+    for i in range(placebo_draws):
+        picks = rng.choice(eligible, size=n, replace=False)
+        cars = []
+        for pick in picks:
+            estimate = estimate_car(returns, market, int(pick))
+            if estimate is not None:
+                cars.append(estimate["car"])
+        null[i] = float(np.mean(cars)) if cars else np.nan
+    null = null[~np.isnan(null)]
+    placebo = {
+        "draws": int(len(null)),
+        "seed": seed,
+        "null_mean": float(null.mean()),
+        "null_sd": float(null.std(ddof=1)),
+        "null_q025": float(np.quantile(null, 0.025)),
+        "null_q975": float(np.quantile(null, 0.975)),
+        "observed_mean_car": observed_mean,
+        "p_two_sided": float((1 + np.sum(np.abs(null) >= abs(observed_mean))) / (1 + len(null))),
+        "observed_percentile": float((null <= observed_mean).mean() * 100),
+        "null_sample": [float(x) for x in null[:200]],
+    }
+
     # The original selection rule, for comparison only.
     labels = pd.read_csv(LABELS)
     labels["Date"] = pd.to_datetime(labels["Date"], utc=True).dt.tz_convert("Asia/Jakarta").dt.normalize().dt.tz_localize(None)
@@ -182,6 +217,7 @@ def run(n_boot: int = 0) -> dict:
         "median_car": float(study["car"].median()),
         "share_negative": float((study["car"] < 0).mean()),
         "patell": {"z": patell_z, "p": patell_p},
+        "placebo": placebo,
         "bmp": bmp,
         "significant_at_5pct_raw": int((study["p_value"] < 0.05).sum()),
         "significant_at_5pct_bh": int((study["p_bh"] < 0.05).sum()),
@@ -202,6 +238,22 @@ def run(n_boot: int = 0) -> dict:
 def report(results: dict, path: Path) -> Path:
     p = results["patell"]
     b = results["bmp"]
+    pl = results["placebo"]
+    outside = pl["observed_mean_car"] < pl["null_q025"] or pl["observed_mean_car"] > pl["null_q975"]
+    if outside:
+        placebo_reading = (
+            f"The observed mean CAR sits **outside the 95% placebo band**: "
+            f"{pl['observed_percentile']:.1f}% of {pl['draws']:,} random-date samples fall at or "
+            f"below it (empirical two-sided p = {pl['p_two_sided']:.3f}). News dates are therefore "
+            f"extreme relative to arbitrary dates, though less decisively than the parametric tests "
+            f"imply."
+        )
+    else:
+        placebo_reading = (
+            f"The observed mean CAR sits **inside the 95% placebo band** "
+            f"({pl['null_q025'] * 100:+.3f}% to {pl['null_q975'] * 100:+.3f}%), so these dates "
+            f"cannot be distinguished from arbitrary dates (empirical p = {pl['p_two_sided']:.3f})."
+        )
     lines = [
         f"# BRI CEO-speech news and abnormal returns ({results['run_id']})",
         "",
@@ -230,6 +282,27 @@ def report(results: dict, path: Path) -> Path:
         f"{results['significant_at_5pct_raw']} of {results['events']} events have a p-value below 0.05; "
         f"{results['significant_at_5pct_bh']} survive Benjamini-Hochberg at a 5% false-discovery rate. "
         "The gap between those two counts is the multiple-testing bill.",
+        "",
+        "## Placebo tests: are news dates special?",
+        "",
+        f"{results['placebo']['draws']:,} placebo samples of {results['events']} random trading dates "
+        f"each, drawn without replacement from the eligible range and put through the identical",
+        "market-model and CAR code (seed recorded in the manifest).",
+        "",
+        "| Measure | Value |",
+        "|---|---|",
+        f"| Observed mean CAR | {results['placebo']['observed_mean_car'] * 100:+.3f}% |",
+        f"| Placebo mean CAR (sd) | {results['placebo']['null_mean'] * 100:+.3f}% "
+        f"({results['placebo']['null_sd'] * 100:.3f}) |",
+        f"| Placebo 2.5th–97.5th percentile | {results['placebo']['null_q025'] * 100:+.3f}% to "
+        f"{results['placebo']['null_q975'] * 100:+.3f}% |",
+        f"| Empirical two-sided p | {results['placebo']['p_two_sided']:.4f} |",
+        f"| Percentile of the observed value | {results['placebo']['observed_percentile']:.1f} |",
+        "",
+        placebo_reading,
+        "",
+        "A news day is not automatically an informative event: an effect of this size could in",
+        "principle have come from dates chosen at random, which is what this null tests.",
         "",
         "## Timing: does the move come before or after publication?",
         "",
@@ -275,11 +348,13 @@ def report(results: dict, path: Path) -> Path:
 def figure(results: dict, path: Path) -> Path:
     detail = pd.DataFrame(results["events_detail"])
     fig, axes = plt.subplots(1, 2, figsize=(9.5, 3.8), dpi=160)
-    axes[0].hist(detail["car"] * 100, bins=14, color="#4a6d8c", edgecolor="white")
-    axes[0].axvline(0, color="#a4443a", linewidth=1)
-    axes[0].set_xlabel("CAR over [-1, +1], %")
-    axes[0].set_ylabel("events")
-    axes[0].set_title("Distribution of event-window CARs", fontsize=9.5, loc="left")
+    null_pct = [x * 100 for x in results["placebo"]["null_sample"]]
+    axes[0].hist(null_pct, bins=30, color="#4a6d8c", alpha=0.75, edgecolor="white", label="placebo dates")
+    axes[0].axvline(results["placebo"]["observed_mean_car"] * 100, color="#a4443a", linewidth=1.6, label="news dates")
+    axes[0].set_xlabel("mean CAR over [-1, +1], %")
+    axes[0].set_ylabel("placebo draws (first 200)")
+    axes[0].legend(frameon=False, fontsize=7.5, loc="upper left")
+    axes[0].set_title("News dates vs random dates", fontsize=9.5, loc="left")
 
     ordered = detail.sort_values("date")
     axes[1].plot(pd.to_datetime(ordered["date"]), ordered["car"].cumsum() * 100, color="#4a6d8c", linewidth=1.4)
@@ -306,8 +381,17 @@ def main() -> None:
     (out / "results.json").write_text(json.dumps(results, indent=2))
     report(results, out / "REPORT.md")
     figure(results, out / "fig_car.png")
+    # Stable path for the README: the run directories are timestamped and pruned.
+    stable = ROOT / "figures"
+    stable.mkdir(exist_ok=True)
+    shutil.copyfile(out / "fig_car.png", stable / "fig_car.png")
 
     print(f"events={results['events']}  mean CAR={results['mean_car']:+.4f}")
+    print(
+        f"placebo: null mean {results['placebo']['null_mean']:+.4f} "
+        f"(sd {results['placebo']['null_sd']:.4f}), empirical p={results['placebo']['p_two_sided']:.4f}, "
+        f"percentile {results['placebo']['observed_percentile']:.1f}"
+    )
     print(
         f"Patell Z={results['patell']['z']:.2f} p={results['patell']['p']:.4f} | "
         f"BMP t={results['bmp']['t']:.2f} p={results['bmp']['p']:.4f}"

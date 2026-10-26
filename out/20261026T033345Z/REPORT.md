@@ -1,4 +1,4 @@
-# BRI CEO-speech news and abnormal returns (20261025T144138Z)
+# BRI CEO-speech news and abnormal returns (20261026T033345Z)
 
 ## Design
 
@@ -20,6 +20,24 @@ Mean CAR over the event window: **-0.0123** (median -0.0093); 76.9% of events ne
 ## Individual events
 
 1 of 26 events have a p-value below 0.05; 1 survive Benjamini-Hochberg at a 5% false-discovery rate. The gap between those two counts is the multiple-testing bill.
+
+## Placebo tests: are news dates special?
+
+1,000 placebo samples of 26 random trading dates each, drawn without replacement from the eligible range and put through the identical
+market-model and CAR code (seed recorded in the manifest).
+
+| Measure | Value |
+|---|---|
+| Observed mean CAR | -1.228% |
+| Placebo mean CAR (sd) | -0.016% (0.523) |
+| Placebo 2.5th–97.5th percentile | -1.055% to +0.993% |
+| Empirical two-sided p | 0.0230 |
+| Percentile of the observed value | 1.0 |
+
+The observed mean CAR sits **outside the 95% placebo band**: 1.0% of 1,000 random-date samples fall at or below it (empirical two-sided p = 0.023). News dates are therefore extreme relative to arbitrary dates, though less decisively than the parametric tests imply.
+
+A news day is not automatically an informative event: an effect of this size could in
+principle have come from dates chosen at random, which is what this null tests.
 
 ## Timing: does the move come before or after publication?
 

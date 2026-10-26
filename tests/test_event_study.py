@@ -43,3 +43,35 @@ def test_study_produces_a_finite_aggregate_and_respects_the_event_window():
     assert results["event_window"] == "[-1, +1] trading days"
     for row in results["events_detail"]:
         assert row["car"] == pytest.approx(row["ar_m1"] + row["ar_0"] + row["ar_p1"])
+
+
+def test_estimate_car_is_zero_when_the_stock_tracks_the_market():
+    from event_study import estimate_car
+
+    rng = np.random.default_rng(1)
+    market = rng.normal(0, 0.01, 400)
+    stock = 2.0 * market  # beta 2, alpha 0, no idiosyncratic move
+    estimate = estimate_car(stock, market, 200)
+    assert estimate is not None
+    assert abs(estimate["car"]) < 1e-10
+
+
+def test_estimate_car_picks_up_an_injected_shock():
+    from event_study import estimate_car
+
+    rng = np.random.default_rng(2)
+    market = rng.normal(0, 0.01, 400)
+    stock = market.copy()
+    stock[200] += 0.05  # a 5% abnormal move on the event day
+    estimate = estimate_car(stock, market, 200)
+    assert estimate is not None
+    assert 0.04 < estimate["car"] < 0.06
+
+
+def test_estimate_car_refuses_windows_that_do_not_fit():
+    from event_study import estimate_car
+
+    market = np.zeros(400)
+    stock = np.zeros(400)
+    assert estimate_car(stock, market, 100) is None   # estimation window starts before zero
+    assert estimate_car(stock, market, 399) is None   # event window runs past the end
